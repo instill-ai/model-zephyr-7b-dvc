@@ -9,7 +9,7 @@ Tags:
 
 🔥🔥🔥 Deploy [zephyr-7b](https://huggingface.co/HuggingFaceH4/zephyr-7b-alpha) model on [VDP](https://github.com/instill-ai/vdp).
 
-This repository contains the Zephyr-7b Text Completion Generation Model in PyTorch format, managed using [DVC](https://dvc.org/).
+This repository contains the Zephyr-7b Text Generation Chat Model in PyTorch format, managed using [DVC v3.30.3](https://dvc.org/).
 
 Notes:
 
