@@ -1,7 +1,7 @@
 ---
-Task: TextGeneration
+Task: TextGenerationChat
 Tags:
-  - TextGeneration
+  - TextGenerationChat
   - zephyr-7b
 ---
 
@@ -10,6 +10,11 @@ Tags:
 🔥🔥🔥 Deploy [zephyr-7b](https://huggingface.co/HuggingFaceH4/zephyr-7b-alpha) model on [VDP](https://github.com/instill-ai/vdp).
 
 This repository contains the Zephyr-7b Text Completion Generation Model in PyTorch format, managed using [DVC](https://dvc.org/).
+
+Notes:
+
+- Disk Space Requirements: 14G
+- Memory Requirements: 44G (for fp32 in cpu mode)
 
 ```
 {
