@@ -1,12 +1,6 @@
 # pylint: skip-file
 import os
 import random
-
-TORCH_GPU_MEMORY_FRACTION = 0.95  # Target memory ~= 15G on 16G card
-# TORCH_GPU_MEMORY_FRACTION = 0.38  # Target memory ~= 15G on 40G card
-TORCH_GPU_DEVICE_ID = 2
-os.environ["CUDA_VISIBLE_DEVICES"] = f"{TORCH_GPU_DEVICE_ID}"
-
 import time
 import json
 from pathlib import Path
@@ -18,10 +12,6 @@ import triton_python_backend_utils as pb_utils
 
 import transformers
 import torch
-
-torch.cuda.set_per_process_memory_fraction(
-    TORCH_GPU_MEMORY_FRACTION, 0  # it count of number of device instead of device index
-)
 
 from conversation import Conversation, conv_templates, SeparatorStyle
 
