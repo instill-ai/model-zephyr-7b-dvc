@@ -16,7 +16,22 @@ parameters: {
 }
 input [
   {
-    name: "conversation"
+    name: "prompt"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  },
+  {
+    name: "prompt_images"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  },
+  {
+    name: "chat_history"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  },
+  {
+    name: "system_message"
     data_type: TYPE_STRING
     dims: [ 1 ]
   },
