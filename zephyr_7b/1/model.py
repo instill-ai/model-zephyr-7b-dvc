@@ -132,17 +132,16 @@ class TritonPythonModel:
                     images.append(image)
                 text_generation_input.prompt_images = images
 
-            # TODO: Support chat_history in next version
-            # if pb_utils.get_input_tensor_by_name(request, "chat_history") is not None:
-            #     chat_history_str = str(
-            #         pb_utils.get_input_tensor_by_name(request, "chat_history")
-            #         .as_numpy()[0]
-            #         .decode("utf-8")
-            #     )
-            #     try:
-            #         text_generation_input.chat_history = json.loads(chat_history_str)
-            #     except json.decoder.JSONDecodeError:
-            #         pass
+            if pb_utils.get_input_tensor_by_name(request, "chat_history") is not None:
+                chat_history_str = str(
+                    pb_utils.get_input_tensor_by_name(request, "chat_history")
+                    .as_numpy()[0]
+                    .decode("utf-8")
+                )
+                try:
+                    text_generation_input.chat_history = json.loads(chat_history_str)
+                except json.decoder.JSONDecodeError:
+                    pass
 
             if pb_utils.get_input_tensor_by_name(request, "system_message") is not None:
                 text_generation_input.system_message = str(
@@ -413,7 +412,9 @@ class TritonPythonModel:
             )
 
             text_outputs = [
-                seq["generated_text"][len(conv.get_prompt()) :].encode("utf-8")
+                seq["generated_text"][
+                    len(conv.get_prompt()) + len("<|im_start|>assistant\n") :
+                ].encode("utf-8")
                 for seq in sequences
             ]
             print("-" * 100)
