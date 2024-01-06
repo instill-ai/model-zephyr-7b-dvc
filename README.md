@@ -16,7 +16,7 @@ Notes:
 - Disk Space Requirements: 14G
 - Memory Requirements: 44G (for fp32 in cpu mode)
 
-```
+```json
 {
     "task_inputs": [
         {
@@ -46,12 +46,12 @@ Notes:
                         "content": [
                             {
                                 "type": "text",
-                                "text": "Ok, My name is Toro nwpw. What can I help you?"
+                                "text": "Ok, My name is Toro now. What can I help you?"
                             }
                         ]
                     }
                 ],
-                // "system_message": "You are not a human.", // You can choose either chat_history or system_message
+                // "system_message": "You are not a human.", // You can use either chat_history or system_message
                 "max_new_tokens": "100",
                 "temperature": "0.8",
                 "top_k": "10",
