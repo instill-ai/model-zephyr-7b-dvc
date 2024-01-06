@@ -1,12 +1,21 @@
 # pylint: skip-file
 import os
+import io
+import base64
+from json.decoder import JSONDecodeError
+from typing import List
+
+from PIL import Image
+
 import random
 
-TORCH_GPU_MEMORY_FRACTION = 0.95  # Target memory ~= 15G on 16G card
-# TORCH_GPU_MEMORY_FRACTION = 0.38  # Target memory ~= 15G on 40G card
-TORCH_GPU_DEVICE_ID = 2
-os.environ["CUDA_VISIBLE_DEVICES"] = f"{TORCH_GPU_DEVICE_ID}"
+# # Ignore Following Configurataion for CPU MODE
+# TORCH_GPU_MEMORY_FRACTION = 0.95  # Target memory ~= 15G on 16G card
+# # TORCH_GPU_MEMORY_FRACTION = 0.38  # Target memory ~= 15G on 40G card
+# TORCH_GPU_DEVICE_ID = 2
+# os.environ["CUDA_VISIBLE_DEVICES"] = f"{TORCH_GPU_DEVICE_ID}"
 
+import json
 import time
 import json
 from pathlib import Path
@@ -14,14 +23,15 @@ from pathlib import Path
 import traceback
 
 import numpy as np
-import triton_python_backend_utils as pb_utils
+from typing import Any, Dict, List, Union
 
 import transformers
 import torch
 
-torch.cuda.set_per_process_memory_fraction(
-    TORCH_GPU_MEMORY_FRACTION, 0  # it count of number of device instead of device index
-)
+# # Ignore Following Configurataion for CPU MODE
+# torch.cuda.set_per_process_memory_fraction(
+#     TORCH_GPU_MEMORY_FRACTION, 0  # it count of number of device instead of device index
+# )
 
 from conversation import Conversation, conv_templates, SeparatorStyle
 
@@ -30,6 +40,19 @@ from conversation import Conversation, conv_templates, SeparatorStyle
 # contains some utility functions for extracting information from model_config
 # and converting Triton input/output types to numpy types.
 import triton_python_backend_utils as pb_utils
+
+
+class TextGenerationInput:
+    prompt = ""
+    prompt_images: Union[List[np.ndarray], None] = None
+    chat_history: Union[List[str], None] = None
+    system_message: Union[str, None] = None
+    max_new_tokens = 100
+    temperature = 0.8
+    top_k = 1
+    random_seed = 0
+    stop_words: Any = ""  # Optional
+    extra_params: Dict[str, str] = {}
 
 
 class TritonPythonModel:
@@ -70,198 +93,342 @@ class TritonPythonModel:
 
     def execute(self, requests):
         responses = []
-
         for request in requests:
-            try:
-                prompt = str(
-                    pb_utils.get_input_tensor_by_name(request, "conversation")
+            text_generation_input = TextGenerationInput()
+            text_generation_input = TextGenerationInput()
+
+            if pb_utils.get_input_tensor_by_name(request, "prompt") is not None:
+                text_generation_input.prompt = str(
+                    pb_utils.get_input_tensor_by_name(request, "prompt")
                     .as_numpy()[0]
                     .decode("utf-8")
                 )
-                print(f"[DEBUG] input `prompt` type({type(prompt)}): {prompt}")
+            else:
+                raise ValueError("Prompt must be non-empty")
 
-                prompt_in_conversation = False
+            if pb_utils.get_input_tensor_by_name(request, "prompt_images") is not None:
+                input_tensors = pb_utils.get_input_tensor_by_name(
+                    request, "prompt_images"
+                ).as_numpy()
+                images = []
+                for enc in input_tensors:
+                    if len(enc) == 0:
+                        continue
+                    try:
+                        enc_json = json.loads(str(enc.decode("utf-8")))
+                        if len(enc_json) == 0:
+                            continue
+                        decoded_enc = enc_json[0]
+                    except JSONDecodeError:
+                        print("[DEBUG] WARNING `enc_json` parsing faield!")
+                    # pil_img = Image.open(io.BytesIO(enc.astype(bytes)))
+                    pil_img = Image.open(io.BytesIO(base64.b64decode(decoded_enc)))
+                    image = np.array(pil_img)
+                    if len(image.shape) == 2:  # gray image
+                        raise ValueError(
+                            f"The image shape with {image.shape} is "
+                            f"not in acceptable"
+                        )
+                    images.append(image)
+                text_generation_input.prompt_images = images
+
+            if pb_utils.get_input_tensor_by_name(request, "chat_history") is not None:
+                chat_history_str = str(
+                    pb_utils.get_input_tensor_by_name(request, "chat_history")
+                    .as_numpy()[0]
+                    .decode("utf-8")
+                )
                 try:
-                    parsed_conversation = json.loads(prompt)
-                    # turn in to converstation?
-
-                    # using fixed roles
-                    roles = ["USER", "ASSISTANT"]
-                    # roles = ["<|im_start|>user\n", "<|im_start|>assistant\n"]
-                    roles_lookup = {x: i for i, x in enumerate(roles)}
-
-                    conv = None
-                    for i, x in enumerate(parsed_conversation):
-                        role = str(x["role"]).upper()
-                        print(f'[DEBUG] Message {i}: {role}: {x["content"]}')
-                        if i == 0:
-                            if role == "SYSTEM":
-                                conv = Conversation(
-                                    system=f"<|im_start|>system\n{str(x['content'])}",
-                                    roles=(
-                                        "<|im_start|>user\n",
-                                        "<|im_start|>assistant\n",
-                                    ),
-                                    version="mpt",
-                                    messages=[],
-                                    offset=0,
-                                    sep_style=SeparatorStyle.MPT,
-                                    sep="<|im_end|>",
-                                )
-                            else:
-                                conv = conv_templates["mpt"].copy()
-                                conv.roles = tuple(roles)
-                                conv.append_message(
-                                    conv.roles[roles_lookup[role]], x["content"]
-                                )
-                        else:
-                            conv.append_message(
-                                conv.roles[roles_lookup[role]], x["content"]
-                            )
-                    prompt_in_conversation = True
+                    text_generation_input.chat_history = json.loads(chat_history_str)
                 except json.decoder.JSONDecodeError:
                     pass
 
-                if not prompt_in_conversation:
-                    conv = conv_templates["mpt"].copy()
-                    conv.append_message(conv.roles[0], prompt)
-                conv.append_message(conv.roles[1], None)
-                extra_params_str = ""
-                if (
-                    pb_utils.get_input_tensor_by_name(request, "extra_params")
-                    is not None
-                ):
-                    extra_params_str = str(
-                        pb_utils.get_input_tensor_by_name(request, "extra_params")
-                        .as_numpy()[0]
-                        .decode("utf-8")
-                    )
-                print(
-                    f"[DEBUG] input `extra_params` type({type(extra_params_str)}): {extra_params_str}"
+            if pb_utils.get_input_tensor_by_name(request, "system_message") is not None:
+                text_generation_input.system_message = str(
+                    pb_utils.get_input_tensor_by_name(request, "system_message")
+                    .as_numpy()[0]
+                    .decode("utf-8")
+                )
+                if len(text_generation_input.system_message) == 0:
+                    text_generation_input.system_message = None
+
+            if pb_utils.get_input_tensor_by_name(request, "max_new_tokens") is not None:
+                text_generation_input.max_new_tokens = int(
+                    pb_utils.get_input_tensor_by_name(
+                        request, "max_new_tokens"
+                    ).as_numpy()[0]
                 )
 
-                extra_params = {}
-                try:
-                    extra_params = json.loads(extra_params_str)
-                except json.decoder.JSONDecodeError:
-                    pass
-
-                max_new_tokens = 256
-                if (
-                    pb_utils.get_input_tensor_by_name(request, "max_new_tokens")
-                    is not None
-                ):
-                    max_new_tokens = int(
-                        pb_utils.get_input_tensor_by_name(
-                            request, "max_new_tokens"
-                        ).as_numpy()[0]
-                    )
-                print(
-                    f"[DEBUG] input `max_new_tokens` type({type(max_new_tokens)}): {max_new_tokens}"
+            if pb_utils.get_input_tensor_by_name(request, "top_k") is not None:
+                text_generation_input.top_k = int(
+                    pb_utils.get_input_tensor_by_name(request, "top_k").as_numpy()[0]
                 )
 
-                top_k = 50
-                if pb_utils.get_input_tensor_by_name(request, "top_k") is not None:
-                    top_k = int(
-                        pb_utils.get_input_tensor_by_name(request, "top_k").as_numpy()[
-                            0
-                        ]
-                    )
-                print(f"[DEBUG] input `top_k` type({type(top_k)}): {top_k}")
-
-                temperature = 0.8
-                if (
-                    pb_utils.get_input_tensor_by_name(request, "temperature")
-                    is not None
-                ):
-                    temperature = float(
+            if pb_utils.get_input_tensor_by_name(request, "temperature") is not None:
+                text_generation_input.temperature = round(
+                    float(
                         pb_utils.get_input_tensor_by_name(
                             request, "temperature"
                         ).as_numpy()[0]
+                    ),
+                    2,
+                )
+
+            if pb_utils.get_input_tensor_by_name(request, "random_seed") is not None:
+                text_generation_input.random_seed = int(
+                    pb_utils.get_input_tensor_by_name(
+                        request, "random_seed"
+                    ).as_numpy()[0]
+                )
+
+            if pb_utils.get_input_tensor_by_name(request, "extra_params") is not None:
+                extra_params_str = str(
+                    pb_utils.get_input_tensor_by_name(request, "extra_params")
+                    .as_numpy()[0]
+                    .decode("utf-8")
+                )
+                try:
+                    text_generation_input.extra_params = json.loads(extra_params_str)
+                except json.decoder.JSONDecodeError:
+                    pass
+
+            print(
+                f"Before Preprocessing `prompt`        : {type(text_generation_input.prompt)}. {text_generation_input.prompt}"
+            )
+            print(
+                f"Before Preprocessing `prompt_images` : {type(text_generation_input.prompt_images)}. {text_generation_input.prompt_images}"
+            )
+            print(
+                f"Before Preprocessing `chat_history`  : {type(text_generation_input.chat_history)}. {text_generation_input.chat_history}"
+            )
+            print(
+                f"Before Preprocessing `system_message`: {type(text_generation_input.system_message)}. {text_generation_input.system_message}"
+            )
+            print(
+                f"Before Preprocessing `max_new_tokens`: {type(text_generation_input.max_new_tokens)}. {text_generation_input.max_new_tokens}"
+            )
+            print(
+                f"Before Preprocessing `temperature`   : {type(text_generation_input.temperature)}. {text_generation_input.temperature}"
+            )
+            print(
+                f"Before Preprocessing `top_k`         : {type(text_generation_input.top_k)}. {text_generation_input.top_k}"
+            )
+            print(
+                f"Before Preprocessing `random_seed`   : {type(text_generation_input.random_seed)}. {text_generation_input.random_seed}"
+            )
+            print(
+                f"Before Preprocessing `stop_words`    : {type(text_generation_input.stop_words)}. {text_generation_input.stop_words}"
+            )
+            print(
+                f"Before Preprocessing `extra_params`  : {type(text_generation_input.extra_params)}. {text_generation_input.extra_params}"
+            )
+            # Preprocessing
+            prompt_roles = ["USER", "ASSISTANT", "SYSTEM"]
+            role_mapping = {
+                "USER": "<|im_start|>user\n",
+                "ASSISTANT": "<|im_start|>assistant\n",
+                "SYSTEM": "<|im_start|>system\n",
+            }
+            if (
+                text_generation_input.chat_history is not None
+                and len(text_generation_input.chat_history) > 0
+            ):
+                prompt_conversation = []
+                default_system_message = text_generation_input.system_message
+                for chat_entity in text_generation_input.chat_history:
+                    role = str(chat_entity["role"]).upper()
+                    chat_history_messages = None
+                    chat_hisotry_images = []
+
+                    for chat_entity_message in chat_entity["content"]:
+                        if chat_entity_message["type"] == "text":
+                            if chat_history_messages is not None:
+                                raise ValueError(
+                                    "Multiple text message detected"
+                                    " in a single chat history entity"
+                                )
+                            # [{'role': 'system', 'content': [{'type': 'text', 'Content': {'Text': "What's in this image?"}}]}]
+                            chat_history_messages = chat_entity_message["Content"][
+                                "Text"
+                            ]
+                        elif chat_entity_message["type"] == "image_url":
+                            # TODO: imeplement image parser in model_backedn
+                            # This field is expected to be base64 encoded string
+                            IMAGE_BASE64_PREFIX = (
+                                "data:image/jpeg;base64,"  # "{base64_image}"
+                            )
+                            if len(chat_entity_message["Content"]["ImageUrl"]) == 0:
+                                continue
+                            elif (
+                                "promptImageUrl"
+                                in chat_entity_message["Content"]["ImageUrl"][
+                                    "image_url"
+                                ]["Type"]
+                            ):
+                                image = Image.open(
+                                    io.BytesIO(
+                                        requests.get(
+                                            chat_entity_message["Content"]["ImageUrl"][
+                                                "image_url"
+                                            ]["Type"]["promptImageUrl"]
+                                        ).content
+                                    )
+                                )
+                                chat_hisotry_images.append(image)
+                            elif (
+                                "promptImageBase64"
+                                in chat_entity_message["Content"]["ImageUrl"][
+                                    "image_url"
+                                ]["Type"]
+                            ):
+                                image_base64_str = chat_entity_message["Content"][
+                                    "ImageUrl"
+                                ]["image_url"]["Type"]["promptImageBase64"]
+                                if image_base64_str.startswith(IMAGE_BASE64_PREFIX):
+                                    image_base64_str = image_base64_str[
+                                        IMAGE_BASE64_PREFIX:
+                                    ]
+                                # expected content in url with base64 format:
+                                # f"data:image/jpeg;base64,{base64_image}"
+                                pil_img = Image.open(
+                                    io.BytesIO(base64.b64decode(image_base64_str))
+                                )
+                                image = np.array(pil_img)
+                                if len(image.shape) == 2:  # gray image
+                                    raise ValueError(
+                                        f"The chat history image shape with {image.shape} is "
+                                        f"not in acceptable"
+                                    )
+                                chat_hisotry_images.append(image)
+                        else:
+                            raise ValueError(
+                                "Unsupported chat_hisotry message type"
+                                ", expected eithjer 'text' or 'image_url'"
+                                f" but get {chat_entity_message['type']}"
+                            )
+
+                    # TODO: support image message in chat history
+                    # self.messages.append([role, message])
+                    if role not in prompt_roles:
+                        raise ValueError(
+                            f"Role `{chat_entity['role']}` is not in supported"
+                            f"role list ({','.join(prompt_roles)})"
+                        )
+                    elif (
+                        role == prompt_roles[-1] and default_system_message is not None
+                    ):
+                        raise ValueError(
+                            "it's ambiguious to set `system_message` and "
+                            f"using role `{prompt_roles[-1]}` simultaneously"
+                        )
+                    elif chat_history_messages is None:
+                        raise ValueError(
+                            f"No message found in chat_history. {chat_entity_message}"
+                        )
+                    if role == prompt_roles[-1]:
+                        default_system_message = chat_history_messages
+                    else:
+                        prompt_conversation.append(
+                            [role_mapping[role], chat_history_messages]
+                        )
+
+                if default_system_message is None:
+                    default_system_message = (
+                        "You are a helpful, respectful and honest assistant. "
+                        "Always answer as helpfully as possible, while being safe.  "
+                        "Your answers should not include any harmful, unethical, racist, "
+                        "sexist, toxic, dangerous, or illegal content. Please ensure that "
+                        "your responses are socially unbiased and positive in nature. "
+                        "If a question does not make any sense, or is not factually coherent, "
+                        "explain why instead of answering something not correct. If you don't "
+                        "know the answer to a question, please don't share false information."
                     )
-                temperature = round(temperature, 2)
-                print(
-                    f"[DEBUG] input `temperature` type({type(temperature)}): {temperature}"
+                conv = Conversation(
+                    system=f"<|im_start|>system\n{default_system_message}",
+                    roles=(
+                        "<|im_start|>user\n",
+                        "<|im_start|>assistant\n",
+                    ),
+                    version="mpt",
+                    messages=prompt_conversation,
+                    offset=0,
+                    sep_style=SeparatorStyle.MPT,
+                    sep="<|im_end|>",
                 )
-
-                random_seed = 0
-                if (
-                    pb_utils.get_input_tensor_by_name(request, "random_seed")
-                    is not None
-                ):
-                    random_seed = int(
-                        pb_utils.get_input_tensor_by_name(
-                            request, "random_seed"
-                        ).as_numpy()[0]
+                conv.append_message(conv.roles[0], text_generation_input.prompt)
+            else:
+                if text_generation_input.system_message is not None:
+                    conv = Conversation(
+                        system=f"<|im_start|>system\n{text_generation_input.system_message}",
+                        roles=(
+                            "<|im_start|>user\n",
+                            "<|im_start|>assistant\n",
+                        ),
+                        version="mpt",
+                        messages=[],
+                        offset=0,
+                        sep_style=SeparatorStyle.MPT,
+                        sep="<|im_end|>",
                     )
-                print(
-                    f"[DEBUG] input `random_seed` type({type(random_seed)}): {random_seed}"
-                )
 
-                if random_seed > 0:
-                    random.seed(random_seed)
-                    np.random.seed(random_seed)
-                    torch.manual_seed(random_seed)
-                    if torch.cuda.is_available():
-                        torch.cuda.manual_seed_all(random_seed)
+                else:
+                    conv = conv_templates["mpt"].copy()
+                conv.append_message(conv.roles[0], text_generation_input.prompt)
 
-                if "top_p" not in extra_params:
-                    extra_params["top_p"] = 0.95
-                # Inference
-                # https://huggingface.co/docs/transformers/main_classes/text_generation#transformers.GenerationConfig
-                # https://huggingface.co/docs/transformers/v4.30.1/en/main_classes/text_generation#transformers.GenerationConfig
-                t0 = time.time()
-                print(f"[DEBUG] Conversation Prompt: \n{conv.get_prompt()}")
+            if text_generation_input.random_seed > 0:
+                random.seed(text_generation_input.random_seed)
+                np.random.seed(text_generation_input.random_seed)
+                torch.manual_seed(text_generation_input.random_seed)
+                if torch.cuda.is_available():
+                    torch.cuda.manual_seed_all(text_generation_input.random_seed)
 
-                # if you want to manually add prompt
-                # prompt = self.pipe.tokenizer.apply_chat_template(
-                #     messages,
-                #     tokenize=False,
-                #     add_generation_prompt=True
-                # )
+            # Inference
+            # https://huggingface.co/docs/transformers/main_classes/text_generation#transformers.GenerationConfig
+            # https://huggingface.co/docs/transformers/v4.30.1/en/main_classes/text_generation#transformers.GenerationConfig
+            t0 = time.time()
+            print("----------------")
+            print(f"[DEBUG] Conversation Prompt: \n{conv.get_prompt()}")
+            print("----------------")
 
-                sequences = self.pipe(
-                    conv.get_prompt(),
-                    max_new_tokens=max_new_tokens,
-                    do_sample=True,
-                    temperature=temperature,
-                    top_k=top_k,
-                    # top_p=0.95
-                    **extra_params,
-                )
+            # if you want to manually add prompt
+            # prompt = self.pipe.tokenizer.apply_chat_template(
+            #     messages,
+            #     tokenize=False,
+            #     add_generation_prompt=True
+            # )
 
-                self.logger.log_info(
-                    f"Inference time cost {time.time()-t0}s with input lenth {len(prompt)}"
-                )
+            sequences = self.pipe(
+                conv.get_prompt(),
+                max_new_tokens=text_generation_input.max_new_tokens,
+                do_sample=True,
+                temperature=text_generation_input.temperature,
+                top_k=text_generation_input.top_k,
+                # top_p=0.95
+                **text_generation_input.extra_params,
+            )
 
-                text_outputs = [
-                    seq["generated_text"][len(conv.get_prompt()) :].encode("utf-8")
-                    for seq in sequences
-                ]
-                print("-" * 100)
-                print(text_outputs)
-                print("-" * 100)
+            self.logger.log_info(
+                f"Inference time cost {time.time()-t0}s with input lenth {len(text_generation_input.prompt)}"
+            )
 
-                triton_output_tensor = pb_utils.Tensor(
-                    "text", np.asarray(text_outputs, dtype=self.output0_dtype)
-                )
-                responses.append(
-                    pb_utils.InferenceResponse(output_tensors=[triton_output_tensor])
-                )
-            except Exception as e:
-                print("DEBUG\n", traceback.format_exc())
-                self.logger.log_info(f"Error generating stream: {e}")
-                error = pb_utils.TritonError(f"Error generating stream: {e}")
-                triton_output_tensor = pb_utils.Tensor(
-                    "text", np.asarray(["N/A"], dtype=self.output0_dtype)
-                )
-                response = pb_utils.InferenceResponse(
-                    output_tensors=[triton_output_tensor], error=error
-                )
-                responses.append(response)
-                self.logger.log_info("The model did not receive the expected inputs")
-                raise e
-            return responses
+            text_outputs = [
+                seq["generated_text"][
+                    len(conv.get_prompt()) + len("<|im_start|>assistant\n") :
+                ].encode("utf-8")
+                for seq in sequences
+            ]
+            print("-" * 100)
+            print(text_outputs)
+            print("-" * 100)
+
+            triton_output_tensor = pb_utils.Tensor(
+                "text", np.asarray(text_outputs, dtype=self.output0_dtype)
+            )
+            responses.append(
+                pb_utils.InferenceResponse(output_tensors=[triton_output_tensor])
+            )
+
+        return responses
 
     def finalize(self):
-        self.logger.log_info("Cleaning up ...")
+        self.logger.log_info("Issuing finalize to Trasnformer backend")

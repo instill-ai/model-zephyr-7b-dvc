@@ -2,5 +2,4 @@ outs:
 - md5: b424cf1d365ec1adfe8923e8f323cbf5.dir
   size: 14486443458
   nfiles: 23
-  hash: md5
   path: zephyr-7b-alpha
