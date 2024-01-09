@@ -225,9 +225,9 @@ class TritonPythonModel:
             # Preprocessing
             prompt_roles = ["USER", "ASSISTANT", "SYSTEM"]
             role_mapping = {
-                "USER": "<|im_start|>user\n",
-                "ASSISTANT": "<|im_start|>assistant\n",
-                "SYSTEM": "<|im_start|>system\n",
+                "USER": "<|user|>\n",
+                "ASSISTANT": "<|assistant|>\n",
+                "SYSTEM": "<|system|>\n",
             }
             if (
                 text_generation_input.chat_history is not None
@@ -344,35 +344,56 @@ class TritonPythonModel:
                         "know the answer to a question, please don't share false information."
                     )
                 conv = Conversation(
-                    system=f"<|im_start|>system\n{default_system_message}",
+                    system=f"<|system|>\n{default_system_message}",
                     roles=(
-                        "<|im_start|>user\n",
-                        "<|im_start|>assistant\n",
+                        "<|user|>\n",
+                        "<|assistant|>\n",
                     ),
-                    version="mpt",
+                    version="zephyr",
                     messages=prompt_conversation,
                     offset=0,
                     sep_style=SeparatorStyle.MPT,
-                    sep="<|im_end|>",
+                    sep="</s>",
                 )
                 conv.append_message(conv.roles[0], text_generation_input.prompt)
             else:
                 if text_generation_input.system_message is not None:
                     conv = Conversation(
-                        system=f"<|im_start|>system\n{text_generation_input.system_message}",
+                        system=f"<|system|>\n{text_generation_input.system_message}",
                         roles=(
-                            "<|im_start|>user\n",
-                            "<|im_start|>assistant\n",
+                            "<|user|>\n",
+                            "<|assistant|>\n",
                         ),
-                        version="mpt",
+                        version="zephyr",
                         messages=[],
                         offset=0,
                         sep_style=SeparatorStyle.MPT,
-                        sep="<|im_end|>",
+                        sep="</s>",
                     )
 
                 else:
-                    conv = conv_templates["mpt"].copy()
+                    default_system_message = (
+                        "You are a helpful, respectful and honest assistant. "
+                        "Always answer as helpfully as possible, while being safe.  "
+                        "Your answers should not include any harmful, unethical, racist, "
+                        "sexist, toxic, dangerous, or illegal content. Please ensure that "
+                        "your responses are socially unbiased and positive in nature. "
+                        "If a question does not make any sense, or is not factually coherent, "
+                        "explain why instead of answering something not correct. If you don't "
+                        "know the answer to a question, please don't share false information."
+                    )
+                    conv = Conversation(
+                        system=f"<|system|>\n{default_system_message}",
+                        roles=(
+                            "<|user|>\n",
+                            "<|assistant|>\n",
+                        ),
+                        version="zephyr",
+                        messages=[],
+                        offset=0,
+                        sep_style=SeparatorStyle.MPT,
+                        sep="</s>",
+                    )
                 conv.append_message(conv.roles[0], text_generation_input.prompt)
 
             if text_generation_input.random_seed > 0:
@@ -414,8 +435,8 @@ class TritonPythonModel:
             text_outputs = []
             for seq in sequences:
                 extracted_seq = seq["generated_text"][len(conv.get_prompt()) :]
-                if extracted_seq.startswith("<|im_start|>assistant"):
-                    extracted_seq = extracted_seq[len("<|im_start|>assistant") :]
+                if extracted_seq.startswith("<|assistant|>"):
+                    extracted_seq = extracted_seq[len("<|assistant|>") :]
                 text_outputs.append(extracted_seq.strip().encode("utf-8"))
 
             print("-" * 100)
