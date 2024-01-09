@@ -352,8 +352,8 @@ class TritonPythonModel:
                     version="zephyr",
                     messages=prompt_conversation,
                     offset=0,
-                    sep_style=SeparatorStyle.MPT,
-                    sep="</s>",
+                    sep_style=SeparatorStyle.SINGLE,
+                    sep="</s>\n",
                 )
                 conv.append_message(conv.roles[0], text_generation_input.prompt)
             else:
@@ -367,8 +367,8 @@ class TritonPythonModel:
                         version="zephyr",
                         messages=[],
                         offset=0,
-                        sep_style=SeparatorStyle.MPT,
-                        sep="</s>",
+                        sep_style=SeparatorStyle.SINGLE,
+                        sep="</s>\n",
                     )
 
                 else:
@@ -391,8 +391,8 @@ class TritonPythonModel:
                         version="zephyr",
                         messages=[],
                         offset=0,
-                        sep_style=SeparatorStyle.MPT,
-                        sep="</s>",
+                        sep_style=SeparatorStyle.SINGLE,
+                        sep="</s>\n",
                     )
                 conv.append_message(conv.roles[0], text_generation_input.prompt)
 
@@ -434,9 +434,8 @@ class TritonPythonModel:
 
             text_outputs = []
             for seq in sequences:
-                extracted_seq = seq["generated_text"][len(conv.get_prompt()) :]
-                if extracted_seq.startswith("<|assistant|>"):
-                    extracted_seq = extracted_seq[len("<|assistant|>") :]
+                extracted_seq = seq["generated_text"][len(conv.get_prompt()) :].strip()
+                extracted_seq = extracted_seq[len("<|assistant|>") :]
                 text_outputs.append(extracted_seq.strip().encode("utf-8"))
 
             print("-" * 100)
