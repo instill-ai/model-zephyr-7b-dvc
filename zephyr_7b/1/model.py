@@ -411,12 +411,13 @@ class TritonPythonModel:
                 f"Inference time cost {time.time()-t0}s with input lenth {len(text_generation_input.prompt)}"
             )
 
-            text_outputs = [
-                seq["generated_text"][
-                    len(conv.get_prompt()) + len("<|im_start|>assistant\n") :
-                ].encode("utf-8")
-                for seq in sequences
-            ]
+            text_outputs = []
+            for seq in sequences:
+                extracted_seq = seq["generated_text"][len(conv.get_prompt()) :]
+                if extracted_seq.startswith("<|im_start|>assistant"):
+                    extracted_seq = extracted_seq[len("<|im_start|>assistant") :]
+                text_outputs.append(extracted_seq.strip().encode("utf-8"))
+
             print("-" * 100)
             print(text_outputs)
             print("-" * 100)
