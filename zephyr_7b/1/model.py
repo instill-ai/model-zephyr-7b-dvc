@@ -414,7 +414,7 @@ class Zephyr:
 
         print(f"Inference time cost {time.time()-t0}s")
 
-        start_length = len(conv.get_prompt()) + len("<|im_start|>assistant\n")
+        start_length = len(conv.get_prompt())  # + len("<|im_start|>assistant\n")
         max_output_len = 0
         text_outputs = []
         for seq in sequences:
