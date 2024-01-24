@@ -190,9 +190,9 @@ class Zephyr:
         COMBINED_CONSEQUENCE_PROMPTS = True
         prompt_roles = ["USER", "ASSISTANT", "SYSTEM"]
         role_mapping = {
-            "USER": "<|im_start|>user\n",
-            "ASSISTANT": "<|im_start|>assistant\n",
-            "SYSTEM": "<|im_start|>system\n",
+            "USER": "<|user|>\n",
+            "ASSISTANT": "<|assistant|>\n",
+            "SYSTEM": "<|system|>\n",
         }
         if (
             task_text_generation_chat_input.chat_history is not None
@@ -360,34 +360,55 @@ class Zephyr:
                     )
 
             conv = Conversation(
-                system=f"<|im_start|>system\n{default_system_message}",
+                system=f"<|system|>\n{default_system_message}",
                 roles=(
-                    "<|im_start|>user\n",
-                    "<|im_start|>assistant\n",
+                    "<|user|>\n",
+                    "<|assistant|>\n",
                 ),
-                version="mpt",
+                version="zephyr",
                 messages=prompt_conversation,
                 offset=0,
-                sep_style=SeparatorStyle.MPT,
-                sep="<|im_end|>",
+                sep_style=SeparatorStyle.SINGLE,
+                sep="</s>\n",
             )
             conv.append_message(conv.roles[0], conversation_prompt)
         else:
             if task_text_generation_chat_input.system_message is not None:
                 conv = Conversation(
-                    system=f"<|im_start|>system\n{task_text_generation_chat_input.system_message}",
+                    system=f"<|system|>\n{task_text_generation_chat_input.system_message}",
                     roles=(
-                        "<|im_start|>user\n",
-                        "<|im_start|>assistant\n",
+                        "<|user|>\n",
+                        "<|assistant|>\n",
                     ),
-                    version="mpt",
+                    version="zephyr",
                     messages=[],
                     offset=0,
-                    sep_style=SeparatorStyle.MPT,
-                    sep="<|im_end|>",
+                    sep_style=SeparatorStyle.SINGLE,
+                    sep="</s>\n",
                 )
             else:
-                conv = conv_templates["mpt"].copy()
+                default_system_message = (
+                    "You are a helpful, respectful and honest assistant. "
+                    "Always answer as helpfully as possible, while being safe.  "
+                    "Your answers should not include any harmful, unethical, racist, "
+                    "sexist, toxic, dangerous, or illegal content. Please ensure that "
+                    "your responses are socially unbiased and positive in nature. "
+                    "If a question does not make any sense, or is not factually coherent, "
+                    "explain why instead of answering something not correct. If you don't "
+                    "know the answer to a question, please don't share false information."
+                )
+                conv = Conversation(
+                    system=f"<|system|>\n{default_system_message}",
+                    roles=(
+                        "<|user|>\n",
+                        "<|assistant|>\n",
+                    ),
+                    version="zephyr",
+                    messages=[],
+                    offset=0,
+                    sep_style=SeparatorStyle.SINGLE,
+                    sep="</s>\n",
+                )
             conv.append_message(conv.roles[0], task_text_generation_chat_input.prompt)
 
         print("----------------")
@@ -414,7 +435,7 @@ class Zephyr:
 
         print(f"Inference time cost {time.time()-t0}s")
 
-        start_length = len(conv.get_prompt())  # + len("<|im_start|>assistant\n")
+        start_length = len(conv.get_prompt()) + len("<|assistant|>")
         max_output_len = 0
         text_outputs = []
         for seq in sequences:
