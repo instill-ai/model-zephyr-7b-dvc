@@ -3,7 +3,7 @@ import os
 
 # Enable following code for gpu mode only
 # TORCH_GPU_DEVICE_ID = 0
-# os.environ["CUDA_VISIBLE_DEVICES"] = f"{TORCH_GPU_DEVICE_ID}"
+os.environ["CUDA_VISIBLE_DEVICES"] = f"0"
 
 
 import io
@@ -59,9 +59,9 @@ class Zephyr:
         self.pipe = transformers.pipeline(
             "text-generation",
             model=model_path,
-            torch_dtype=torch.float32,  # if gpu mode turn to float16
-            # use_safetensors=True,
-            device_map="cpu",
+            torch_dtype=torch.float16,  # if gpu mode turn to float16
+            # use_safetensors=True, # not supported
+            device_map="cuda",
         )
 
     def ModelMetadata(self, req):
@@ -471,7 +471,7 @@ class Zephyr:
 
 
 deployable = InstillDeployable(
-    Zephyr, model_weight_or_folder_name="zephyr-7b-alpha/", use_gpu=False
+    Zephyr, model_weight_or_folder_name="zephyr-7b-alpha/", use_gpu=True
 )
 
 # # Optional
