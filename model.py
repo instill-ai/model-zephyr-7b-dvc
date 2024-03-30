@@ -64,6 +64,7 @@ class Zephyr:
             torch_dtype=torch.float16,  # if gpu mode turn to float16
             # use_safetensors=True, # not supported
             device_map="cuda",
+            token=ACCESS_TOKEN,
         )
 
     def ModelMetadata(self, req):
