@@ -11,7 +11,6 @@ import time
 import requests
 import random
 import base64
-import ray
 import torch
 import transformers
 from PIL import Image
@@ -43,9 +42,7 @@ from conversation import Conversation, conv_templates, SeparatorStyle
 
 @instill_deployment
 class Zephyr:
-    def __init__(self, model_path: str):
-        self.application_name = "_".join(model_path.split("/")[3:5])
-        self.deployement_name = model_path.split("/")[4]
+    def __init__(self):
         print(f"application_name: {self.application_name}")
         print(f"deployement_name: {self.deployement_name}")
         print(f"torch version: {torch.__version__}")
@@ -56,9 +53,14 @@ class Zephyr:
         # print(f"torch.cuda.device(0) : {torch.cuda.device(0)}")
         # print(f"torch.cuda.get_device_name(0) : {torch.cuda.get_device_name(0)}")
 
+        # https://huggingface.co/HuggingFaceH4/zephyr-7b-beta
+        # Download through huggingface
+
+        ACCESS_TOKEN = "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"
+
         self.pipe = transformers.pipeline(
             "text-generation",
-            model=model_path,
+            "HuggingFaceH4/zephyr-7b-beta",
             torch_dtype=torch.float16,  # if gpu mode turn to float16
             # use_safetensors=True, # not supported
             device_map="cuda",
@@ -470,10 +472,11 @@ class Zephyr:
         )
 
 
-deployable = InstillDeployable(
-    Zephyr, model_weight_or_folder_name="zephyr-7b-alpha/", use_gpu=True
+entrypoint = (
+    # https://github.com/instill-ai/python-sdk/blob/main/samples/tinyllama-gpu/model.py
+    InstillDeployable(Zephyr)
+    .update_max_replicas(4)
+    .update_min_replicas(1)
+    .update_num_gpus(0.35)  # 15G/40G
+    .get_deployment_handle()
 )
-
-# # Optional
-# deployable.update_max_replicas(2)
-# deployable.update_min_replicas(0)

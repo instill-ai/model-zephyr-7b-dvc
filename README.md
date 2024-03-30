@@ -16,6 +16,24 @@ Notes:
 - Disk Space Requirements: 14G
 - Memory Requirements: 44G (for fp32 in cpu mode)
 
+**Create Model**
+
+```json
+{
+    "id": "zephyr-7b-gpu",
+    "description": "Zephyr-7b, from Huggingface, is trained to generate text based on your prompts.",
+    "model_definition": "model-definitions/container",
+    "visibility": "VISIBILITY_PUBLIC",
+    "region": "REGION_GCP_EUROPE_WEST_4",
+    "hardware": "GPU",
+    "configuration": {
+        "task": "TEXT_GENERATION_CHAT"
+    }
+}
+```
+
+**Inference model**
+
 ```json
 {
     "task_inputs": [
