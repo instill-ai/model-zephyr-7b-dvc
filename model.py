@@ -43,10 +43,7 @@ from conversation import Conversation, conv_templates, SeparatorStyle
 @instill_deployment
 class Zephyr:
     def __init__(self):
-        print(f"application_name: {self.application_name}")
-        print(f"deployement_name: {self.deployement_name}")
         print(f"torch version: {torch.__version__}")
-
         print(f"torch.cuda.is_available() : {torch.cuda.is_available()}")
         print(f"torch.cuda.device_count() : {torch.cuda.device_count()}")
         # print(f"torch.cuda.current_device() : {torch.cuda.current_device()}")
@@ -56,7 +53,7 @@ class Zephyr:
         # https://huggingface.co/HuggingFaceH4/zephyr-7b-beta
         # Download through huggingface
 
-        ACCESS_TOKEN = "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"
+        ACCESS_TOKEN = "..."
 
         self.pipe = transformers.pipeline(
             "text-generation",
