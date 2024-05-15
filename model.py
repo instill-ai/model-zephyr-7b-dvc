@@ -11,7 +11,6 @@ import time
 import requests
 import random
 import base64
-import ray
 import torch
 import transformers
 from PIL import Image
@@ -21,7 +20,6 @@ import numpy as np
 from instill.helpers.const import DataType, TextGenerationChatInput
 from instill.helpers.ray_io import (
     serialize_byte_tensor,
-    deserialize_bytes_tensor,
     StandardTaskIO,
 )
 
@@ -43,13 +41,8 @@ from conversation import Conversation, conv_templates, SeparatorStyle
 
 @instill_deployment
 class Zephyr:
-    def __init__(self, model_path: str):
-        self.application_name = "_".join(model_path.split("/")[3:5])
-        self.deployement_name = model_path.split("/")[4]
-        print(f"application_name: {self.application_name}")
-        print(f"deployement_name: {self.deployement_name}")
+    def __init__(self):
         print(f"torch version: {torch.__version__}")
-
         print(f"torch.cuda.is_available() : {torch.cuda.is_available()}")
         print(f"torch.cuda.device_count() : {torch.cuda.device_count()}")
         # print(f"torch.cuda.current_device() : {torch.cuda.current_device()}")
@@ -58,7 +51,7 @@ class Zephyr:
 
         self.pipe = transformers.pipeline(
             "text-generation",
-            model=model_path,
+            model="zephyr-7b-alpha",
             torch_dtype=torch.float16,  # if gpu mode turn to float16
             # use_safetensors=True, # not supported
             device_map="cuda",
@@ -469,11 +462,4 @@ class Zephyr:
             raw_outputs=[task_output],
         )
 
-
-deployable = InstillDeployable(
-    Zephyr, model_weight_or_folder_name="zephyr-7b-alpha/", use_gpu=True
-)
-
-# # Optional
-# deployable.update_max_replicas(2)
-# deployable.update_min_replicas(0)
+entrypoint = InstillDeployable(Zephyr).get_deployment_handle()
